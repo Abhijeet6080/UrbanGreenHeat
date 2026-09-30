@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GreenHeat — Urban Heat & Green Cover Intelligence</title>
+  <meta name="description" content="Satellite-based analysis of vegetation and land-surface temperature">
+
+  <!-- Leaflet CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+        integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+        crossorigin="" />
+
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+
+  <!-- App CSS -->
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- ===== HEADER ===== -->
+  <header class="header">
+    <div class="header-brand">
+      <span class="header-logo">🌿</span>
+      <div>
+        <h1>GreenHeat <span>— Urban Heat & Green Cover Intelligence</span></h1>
+        <p class="header-subtitle">Satellite-based analysis of vegetation and land-surface temperature</p>
+      </div>
+    </div>
+    <span class="header-badge" id="data-badge">
+      <span class="loading-spinner" id="badge-spinner" style="display:none;"></span>
+      <span id="badge-text">Checking data…</span>
+    </span>
+  </header>
+
+  <!-- ===== MAIN CONTENT ===== -->
+  <main class="main-container">
+
+    <!-- Statistics Cards -->
+    <section class="stats-grid" id="stats-grid">
+      <div class="stat-card">
+        <div class="stat-icon">🌱</div>
+        <div class="stat-value" id="stat-ndvi">—</div>
+        <div class="stat-label">Avg NDVI</div>
+        <div class="stat-sub">Vegetation Index</div>
+      </div>
+      <div class="stat-card heat">
+        <div class="stat-icon">🌡️</div>
+        <div class="stat-value" id="stat-lst">—</div>
+        <div class="stat-label">Avg LST</div>
+        <div class="stat-sub">Surface Temperature</div>
+      </div>
+      <div class="stat-card warning">
+        <div class="stat-icon">🔥</div>
+        <div class="stat-value" id="stat-hotspots">—</div>
+        <div class="stat-label">Heat Hotspots</div>
+        <div class="stat-sub">High-temperature areas</div>
+      </div>
+      <div class="stat-card priority">
+        <div class="stat-icon">🏗️</div>
+        <div class="stat-value" id="stat-priority">—</div>
+        <div class="stat-label">Low Vegetation Areas</div>
+        <div class="stat-sub">Greening priority zones</div>
+      </div>
+    </section>
+
+    <!-- Map + Sidebar -->
+    <section class="map-section">
+      <div class="map-container">
+        <div id="map"></div>
+      </div>
+      <div class="sidebar">
+        <!-- Layer Controls -->
+        <div class="panel">
+          <h3>🗺️ Map Layers</h3>
+          <label class="layer-toggle">
+            <input type="checkbox" id="layer-ndvi" checked>
+            <span class="layer-dot" style="background:#2d8a4e;"></span>
+            NDVI (Vegetation)
+          </label>
+          <label class="layer-toggle">
+            <input type="checkbox" id="layer-lst" checked>
+            <span class="layer-dot" style="background:#e65100;"></span>
+            LST (Temperature)
+          </label>
+          <label class="layer-toggle">
+            <input type="checkbox" id="layer-hotspots" checked>
+            <span class="layer-dot" style="background:#d32f2f;"></span>
+            Heat Hotspots
+          </label>
+          <label class="layer-toggle">
+            <input type="checkbox" id="layer-priority">
+            <span class="layer-dot" style="background:#ff6f00;"></span>
+            Priority Greening Areas
+          </label>
+        </div>
+
+        <!-- Legend -->
+        <div class="panel">
+          <h3>📊 Legend</h3>
+
+          <div class="legend-section">
+            <div class="legend-section-title">NDVI (Vegetation Index)</div>
+            <div class="legend-gradient" style="background: linear-gradient(to right, #d73027, #fc8d59, #fee08b, #d9ef8b, #91cf60, #1a9850);"></div>
+            <div class="legend-labels">
+              <span>−0.1 (Bare)</span>
+              <span>0.8 (Dense)</span>
+            </div>
+          </div>
+
+          <div class="legend-section">
+            <div class="legend-section-title">LST (°C)</div>
+            <div class="legend-gradient" style="background: linear-gradient(to right, #313695, #4575b4, #abd9e9, #fee090, #f46d43, #a50026);"></div>
+            <div class="legend-labels">
+              <span>20°C</span>
+              <span>50°C</span>
+            </div>
+          </div>
+
+          <div class="legend-section">
+            <div class="legend-item">
+              <span class="legend-color" style="background:#d32f2f;"></span>
+              Heat Hotspot
+            </div>
+            <div class="legend-item">
+              <span class="legend-color" style="background:#ff6f00;"></span>
+              Priority Greening Area
+            </div>
+          </div>
+        </div>
+
+        <!-- Study Info -->
+        <div class="panel">
+          <h3>📍 Study Area</h3>
+          <p style="font-size:0.82rem; color:var(--text-secondary);" id="study-info">
+            Study area and period information will appear when data is loaded.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Charts -->
+    <section class="charts-section">
+      <div class="chart-card">
+        <h3>NDVI vs Land Surface Temperature</h3>
+        <p class="chart-subtitle">Relationship between vegetation density and surface temperature</p>
+        <div id="scatter-container">
+          <canvas id="scatter-canvas"></canvas>
+          <div class="chart-placeholder" id="scatter-placeholder">
+            <span class="placeholder-icon">📈</span>
+            <span>Correlation will be calculated after satellite data are loaded.</span>
+          </div>
+        </div>
+      </div>
+      <div class="chart-card">
+        <h3>Temperature Distribution</h3>
+        <p class="chart-subtitle">LST frequency across the study area</p>
+        <div id="bar-container">
+          <canvas id="bar-canvas"></canvas>
+          <div class="chart-placeholder" id="bar-placeholder">
+            <span class="placeholder-icon">📊</span>
+            <span>Awaiting Earth Engine data.</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Methodology & Data Sources -->
+    <section class="info-grid">
+      <!-- Methodology -->
+      <div class="info-card">
+        <h3>🔬 Methodology</h3>
+        <div class="method-flow">
+          <div class="method-step">
+            <div class="step-num">1</div>
+            <div class="step-content">
+              <h4>Satellite Imagery</h4>
+              <p>Landsat 8/9 Collection 2, Level-2 surface reflectance and surface temperature products from USGS.</p>
+            </div>
+          </div>
+          <div class="method-step">
+            <div class="step-num">2</div>
+            <div class="step-content">
+              <h4>Cloud &amp; Shadow Masking</h4>
+              <p>The QA_PIXEL band is used to remove cloudy and cloud-shadowed pixels before analysis.</p>
+            </div>
+          </div>
+          <div class="method-step">
+            <div class="step-num">3</div>
+            <div class="step-content">
+              <h4>NDVI Calculation</h4>
+              <p>Normalized Difference Vegetation Index computed from near-infrared and red bands. Range: −1 to +1.</p>
+            </div>
+          </div>
+          <div class="method-step">
+            <div class="step-num">4</div>
+            <div class="step-content">
+              <h4>LST Extraction</h4>
+              <p>Land Surface Temperature derived from the thermal band (ST_B10), converted from Kelvin to Celsius.</p>
+            </div>
+          </div>
+          <div class="method-step">
+            <div class="step-num">5</div>
+            <div class="step-content">
+              <h4>Heat Hotspot Detection</h4>
+              <p>Hotspots are identified using percentile-based thresholds (default: 85th percentile) of the LST distribution.</p>
+            </div>
+          </div>
+          <div class="method-step">
+            <div class="step-num">6</div>
+            <div class="step-content">
+              <h4>NDVI–LST Relationship</h4>
+              <p>Scatter analysis reveals the inverse correlation typically observed between vegetation cover and surface temperature.</p>
+            </div>
+          </div>
+          <div class="method-step">
+            <div class="step-num">7</div>
+            <div class="step-content">
+              <h4>Priority Greening Areas</h4>
+              <p>Locations with high surface temperature AND low vegetation are flagged as analytical priority areas for potential greening.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Data Sources -->
+      <div class="info-card">
+        <h3>📡 Data Sources</h3>
+        <div class="source-item">
+          <span class="source-icon">🛰️</span>
+          <div>
+            <div class="source-name">USGS Landsat 8/9</div>
+            <div class="source-desc">Collection 2 Level-2 Surface Reflectance (SR) and Surface Temperature (ST) products. Spatial resolution: 30m (SR), 100m resampled to 30m (ST).</div>
+          </div>
+        </div>
+        <div class="source-item">
+          <span class="source-icon">🌍</span>
+          <div>
+            <div class="source-name">Google Earth Engine</div>
+            <div class="source-desc">Cloud computing platform used to process satellite imagery, calculate indices, and export geospatial results.</div>
+          </div>
+        </div>
+        <div class="source-item">
+          <span class="source-icon">🗺️</span>
+          <div>
+            <div class="source-name">OpenStreetMap</div>
+            <div class="source-desc">Base map tiles providing geographic context. © OpenStreetMap contributors.</div>
+          </div>
+        </div>
+
+        <div style="margin-top: 1.2rem; padding-top: 0.8rem; border-top: 1px solid var(--bg);">
+          <h4 style="font-size: 0.85rem; color: var(--text); margin-bottom: 0.5rem;">⚠️ Important Notes</h4>
+          <ul style="font-size: 0.78rem; color: var(--text-secondary); padding-left: 1rem; list-style: disc;">
+            <li>LST measures <strong>surface</strong> temperature, not near-surface air temperature.</li>
+            <li>NDVI classification thresholds may vary by climate and region.</li>
+            <li>Hotspot detection uses relative (percentile) thresholds within the study area.</li>
+            <li>Priority greening areas are analytical outputs, not prescriptive recommendations.</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- ===== FOOTER ===== -->
+  <footer class="footer">
+    <p>
+      <strong>GreenHeat</strong> — Urban Heat &amp; Green Cover Intelligence
+      &nbsp;|&nbsp;
+      University Geospatial Hackathon 2026
+      &nbsp;|&nbsp;
+      Data: <a href="https://www.usgs.gov/landsat-missions" target="_blank" rel="noopener">USGS Landsat</a>
+      &nbsp;|&nbsp;
+      Map tiles: <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">© OpenStreetMap</a>
+    </p>
+  </footer>
+
+  <!-- Leaflet JS -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+          integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+          crossorigin=""></script>
+
+  <!-- App JS -->
+  <script src="script.js"></script>
+</body>
+</html>
