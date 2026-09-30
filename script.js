@@ -12,8 +12,8 @@
 
 const CONFIG = {
   // Default map center (will be overridden by data bounds)
-  defaultCenter: [12.9716, 77.5946], // Bangalore
-  defaultZoom: 12,
+  defaultCenter: [12.83, 80.04], // Kattankulathur, Tamil Nadu
+  defaultZoom: 13,
 
   // Data file paths (relative)
   dataFiles: {
@@ -254,23 +254,12 @@ function createHotspotLayer(geojson) {
 // ============================================================
 
 function createPriorityLayer(geojson) {
-  // Priority areas can come from hotspots.geojson (features with priority property)
-  // or from a separate file. We filter features that have the priority flag.
-  const priorityFeatures = {
-    type: 'FeatureCollection',
-    features: geojson.features.filter(f =>
-      f.properties.priority !== undefined ||
-      f.properties.Priority !== undefined ||
-      // If the hotspots file contains both, we treat all as hotspots here
-      // Priority layer might be the same data but differently styled
-      (f.properties.ndvi !== undefined && f.properties.lst !== undefined)
-    )
-  };
+  // Priority areas exported from GEE already contain only
+  // locations with high LST + low NDVI. Each feature has
+  // properties: priority, ndvi, lst.
+  if (!geojson.features || geojson.features.length === 0) return null;
 
-  // If no dedicated priority features, try to derive from NDVI+LST data
-  if (priorityFeatures.features.length === 0) return null;
-
-  return L.geoJSON(priorityFeatures, {
+  return L.geoJSON(geojson, {
     pointToLayer: function (feature, latlng) {
       return L.circleMarker(latlng, {
         radius: CONFIG.pointRadius + 1,
@@ -289,10 +278,17 @@ function createPriorityLayer(geojson) {
       };
     },
     onEachFeature: function (feature, layer) {
-      layer.bindPopup(`
-        <strong>🏗️ Priority Greening Area</strong><br>
-        <em>High temperature + low vegetation</em>
-      `);
+      const ndvi = feature.properties.ndvi ?? feature.properties.NDVI;
+      const lst = feature.properties.lst ?? feature.properties.LST;
+      let details = '<strong>🏗️ Priority Greening Area</strong><br>';
+      details += '<em>Analytical priority for further urban-greening investigation</em>';
+      if (ndvi !== undefined && ndvi !== null) {
+        details += `<br>NDVI: <b>${parseFloat(ndvi).toFixed(3)}</b>`;
+      }
+      if (lst !== undefined && lst !== null) {
+        details += `<br>LST: <b>${parseFloat(lst).toFixed(1)} °C</b>`;
+      }
+      layer.bindPopup(details);
     }
   });
 }
@@ -326,7 +322,9 @@ function updateStatistics(stats) {
     // Study info
     if (stats.study_period_start && stats.study_period_end) {
       const info = document.getElementById('study-info');
+      const areaName = stats.study_area_name || 'Not specified';
       info.innerHTML = `
+        <strong>Area:</strong> ${areaName}<br>
         <strong>Period:</strong> ${stats.study_period_start} to ${stats.study_period_end}<br>
         <strong>Scenes:</strong> ${stats.total_scenes ?? 'N/A'}<br>
         <strong>Grid:</strong> ${stats.grid_scale_meters ?? 'N/A'}m
@@ -643,7 +641,7 @@ async function loadAllData() {
 
   // Try to create priority layer from hotspots data or separate file
   // First try a separate priority file
-  const priorityData = await safeFetch('data/priority.geojson');
+  const priorityData = await safeFetch('data/priority_areas.geojson');
   if (priorityData && priorityData.features && priorityData.features.length > 0) {
     state.layers.priority = createPriorityLayer(priorityData);
     if (state.layers.priority) {

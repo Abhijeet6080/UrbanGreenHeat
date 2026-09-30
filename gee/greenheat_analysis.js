@@ -32,47 +32,51 @@
  */
 
 // ============================================================
-// STEP 1: DEFINE STUDY AREA
+// STEP 1: DEFINE STUDY AREA — KATTANKULATHUR
 // ============================================================
-// Option A: Use a point and buffer (simple)
-// Change the coordinates to your city of interest.
-// The buffer creates a rectangular study area around the point.
+// GreenHeat analysis extent covering Kattankulathur and the
+// SRMIST campus area in Chengalpattu district, Tamil Nadu, India.
+//
+// This is NOT an official administrative boundary. It is the
+// analysis extent chosen for the GreenHeat project.
+//
+// To change the study area, modify these four coordinate values:
+// ============================================================
 
-var cityCenter = ee.Geometry.Point([77.5946, 12.9716]); // Bangalore, India
-var studyArea = cityCenter.buffer(15000).bounds(); // 15 km buffer
+var WEST  = 80.00;   // Western boundary (longitude °E)
+var EAST  = 80.08;   // Eastern boundary  (longitude °E)
+var SOUTH = 12.80;   // Southern boundary  (latitude °N)
+var NORTH = 12.86;   // Northern boundary  (latitude °N)
 
-// Option B: Draw a geometry in the GEE Code Editor
-// 1. Use the drawing tools (top-left of the map)
-// 2. Draw a rectangle or polygon over your study area
-// 3. It will appear as a variable called "geometry"
-// 4. Uncomment the line below and comment out the lines above:
+var studyArea = ee.Geometry.Rectangle([WEST, SOUTH, EAST, NORTH]);
+
+// Alternative: Draw your own geometry in the GEE Code Editor
+// and uncomment the next line:
 // var studyArea = geometry;
 
-// Option C: Use an administrative boundary from a GEE FeatureCollection
-// var studyArea = ee.FeatureCollection('FAO/GAUL/2015/level2')
-//   .filter(ee.Filter.eq('ADM2_NAME', 'Bangalore Urban'))
-//   .geometry();
-
-Map.centerObject(studyArea, 12);
-Map.addLayer(studyArea, {color: 'blue'}, 'Study Area', true, 0.3);
+Map.centerObject(studyArea, 13);
+Map.addLayer(studyArea, {color: 'blue'}, 'Study Area — Kattankulathur', true, 0.3);
 
 // ============================================================
 // STEP 2: CONFIGURATION
 // ============================================================
 
-var START_DATE = '2024-01-01';
-var END_DATE   = '2024-06-30';
-var CLOUD_COVER_MAX = 30; // Maximum cloud cover percentage
+var START_DATE = '2025-01-01';   // Analysis start date — change as needed
+var END_DATE   = '2025-12-31';   // Analysis end date   — change as needed
+var CLOUD_COVER_MAX = 30;        // Maximum scene-level cloud cover (%)
 
-// Grid size for sampling (in meters)
-// Smaller = more detail but larger files / longer processing
-var GRID_SCALE = 500;
+// Grid size for sampling (in meters).
+// Smaller = more spatial detail but larger export files.
+var GRID_SCALE = 250;
 
-// Hotspot detection: percentile-based threshold
-// Areas above this percentile of LST are flagged as hotspots
-var HOTSPOT_PERCENTILE = 85;
+// Hotspot detection: percentile-based threshold.
+// Areas where LST exceeds this percentile of the study area's
+// temperature distribution are classified as heat hotspots.
+// This is a relative threshold, not a universal scientific cutoff.
+var HOTSPOT_PERCENTILE = 90;
 
-// Low vegetation threshold (NDVI below this is considered low)
+// Low vegetation threshold (NDVI below this is considered low).
+// Adjust for different climatic regions if needed.
 var LOW_NDVI_THRESHOLD = 0.2;
 
 print('=== GreenHeat Analysis ===' );
@@ -81,16 +85,34 @@ print('Study period:', START_DATE, 'to', END_DATE);
 // ============================================================
 // STEP 3: CLOUD MASKING FUNCTION
 // ============================================================
-// Landsat Collection 2 Level-2 uses the QA_PIXEL band for
-// cloud and cloud-shadow masking.
+// Landsat Collection 2 Level-2 includes a quality band called
+// QA_PIXEL. Each pixel's value encodes information about clouds,
+// cloud shadows, and other artifacts using binary bit flags.
+//
+// Bit positions used here:
+//   Bit 1 = Dilated Cloud   (1 = yes, 0 = no)
+//   Bit 2 = Cirrus           (1 = yes, 0 = no)
+//   Bit 3 = Cloud            (1 = yes, 0 = no)
+//   Bit 4 = Cloud Shadow     (1 = yes, 0 = no)
+//
+// We create a mask that keeps only pixels where ALL these
+// bits are 0 (i.e., clear sky). This ensures the NDVI and
+// LST values come from the land surface, not clouds.
 
 function maskL8L9clouds(image) {
-  // Bit 3: Cloud, Bit 4: Cloud Shadow
-  var qaBand = image.select('QA_PIXEL');
-  var cloudBit = 1 << 3;
-  var shadowBit = 1 << 4;
-  var mask = qaBand.bitwiseAnd(cloudBit).eq(0)
-    .and(qaBand.bitwiseAnd(shadowBit).eq(0));
+  var qa = image.select('QA_PIXEL');
+
+  // Build bitmask: bits 1, 2, 3, 4 should all be 0
+  var dilatedCloudBit = 1 << 1;  // Bit 1
+  var cirrusBit       = 1 << 2;  // Bit 2
+  var cloudBit        = 1 << 3;  // Bit 3
+  var shadowBit       = 1 << 4;  // Bit 4
+
+  var mask = qa.bitwiseAnd(dilatedCloudBit).eq(0)
+    .and(qa.bitwiseAnd(cirrusBit).eq(0))
+    .and(qa.bitwiseAnd(cloudBit).eq(0))
+    .and(qa.bitwiseAnd(shadowBit).eq(0));
+
   return image.updateMask(mask);
 }
 
@@ -242,59 +264,79 @@ Map.addLayer(priorityAreas, {palette: ['#ff6f00']}, 'Priority Greening Areas', t
 // ============================================================
 // STEP 11: SAMPLE DATA FOR EXPORT
 // ============================================================
-// Create a grid of sample points for export to GeoJSON.
-// This converts the raster data to point features that
-// the web dashboard can display.
+// Create sample points for export to GeoJSON.
+// The web dashboard reads these point features and displays
+// them as colored circles on the Leaflet map.
+//
+// We sample NDVI and LST together from the same points so
+// that the scatter chart can pair them by matching coordinates.
 
-// Combined NDVI + LST image for sampling
+// Combined NDVI + LST image
 var combined = ndviComposite.addBands(lstComposite);
 
-// Sample points across the study area
+// Sample ~2000 points across the study area
 var samplePoints = combined.sample({
   region: studyArea,
   scale: GRID_SCALE,
   numPixels: 2000,
   seed: 42,
-  geometries: true
+  geometries: true  // include lat/lon in output
 });
 
 print('Sample points:', samplePoints.size());
 
-// Split into separate feature collections for each data layer
+// ---- NDVI points (property name: "ndvi") ----
 var ndviPoints = samplePoints.map(function(f) {
-  return f.set('ndvi', f.get('NDVI')).select(['ndvi']);
+  return ee.Feature(f.geometry(), { ndvi: f.get('NDVI') });
 });
 
+// ---- LST points (property name: "lst") ----
 var lstPoints = samplePoints.map(function(f) {
-  return f.set('lst', f.get('LST')).select(['lst']);
+  return ee.Feature(f.geometry(), { lst: f.get('LST') });
 });
 
-// Hotspot points (sample only hotspot areas)
-var hotspotPoints = hotspots.sample({
+// ---- Hotspot points ----
+// Sample from the hotspot mask. We also include the LST value
+// so the popup can show the actual temperature.
+var hotspotImage = hotspots.addBands(lstComposite);
+var hotspotPoints = hotspotImage.sample({
   region: studyArea,
   scale: GRID_SCALE,
   numPixels: 500,
   seed: 42,
   geometries: true
+}).map(function(f) {
+  return ee.Feature(f.geometry(), {
+    hotspot: 1,
+    lst: f.get('LST')
+  });
 });
 
-// Priority greening area points
-var priorityPoints = priorityAreas.sample({
+// ---- Priority greening area points ----
+// Include both NDVI and LST so the popup can explain why
+// this location was flagged.
+var priorityImage = priorityAreas.addBands(combined);
+var priorityPoints = priorityImage.sample({
   region: studyArea,
   scale: GRID_SCALE,
   numPixels: 500,
   seed: 42,
   geometries: true
+}).map(function(f) {
+  return ee.Feature(f.geometry(), {
+    priority: 1,
+    ndvi: f.get('NDVI'),
+    lst: f.get('LST')
+  });
 });
 
 // ============================================================
 // STEP 12: EXPORT RESULTS
 // ============================================================
-// Run these exports from the Tasks tab in the GEE Code Editor.
-// After export completes, download the files from Google Drive
-// and place them in the data/ folder of the web application.
+// After clicking "Run", open the Tasks tab (top-right corner)
+// and click the blue "RUN" button on each export task.
+// Files will be saved to your Google Drive → GreenHeat folder.
 
-// Export NDVI points
 Export.table.toDrive({
   collection: ndviPoints,
   description: 'greenheat_ndvi',
@@ -302,7 +344,6 @@ Export.table.toDrive({
   folder: 'GreenHeat'
 });
 
-// Export LST points
 Export.table.toDrive({
   collection: lstPoints,
   description: 'greenheat_lst',
@@ -310,7 +351,6 @@ Export.table.toDrive({
   folder: 'GreenHeat'
 });
 
-// Export hotspot points
 Export.table.toDrive({
   collection: hotspotPoints,
   description: 'greenheat_hotspots',
@@ -318,34 +358,26 @@ Export.table.toDrive({
   folder: 'GreenHeat'
 });
 
-// Export priority greening areas
 Export.table.toDrive({
   collection: priorityPoints,
-  description: 'greenheat_priority',
+  description: 'greenheat_priority_areas',
   fileFormat: 'GeoJSON',
   folder: 'GreenHeat'
 });
 
-// Export combined data for scatter plot (NDVI vs LST)
-// This creates a simple table for the chart
-var scatterData = samplePoints.map(function(f) {
-  return f.select(['NDVI', 'LST']);
-});
-
-Export.table.toDrive({
-  collection: scatterData,
-  description: 'greenheat_scatter',
-  fileFormat: 'CSV',
-  folder: 'GreenHeat'
-});
-
 // ============================================================
-// STEP 13: EXPORT STATISTICS AS A FEATURE (for statistics.json)
+// STEP 13: EXPORT STATISTICS (for statistics.json)
 // ============================================================
-// This exports key stats. After download, you may need to
-// extract the properties into a simple JSON structure.
+// This exports a single feature whose properties become the
+// statistics.json file for the web dashboard.
+//
+// After downloading the GeoJSON from Drive, extract the
+// properties from features[0].properties into a clean JSON file,
+// then set "data_available": true.
 
 var statsFeature = ee.Feature(null, {
+  data_available: true,
+  study_area_name: 'Kattankulathur, Tamil Nadu, India',
   ndvi_mean: ndviStats.get('NDVI_mean'),
   ndvi_stddev: ndviStats.get('NDVI_stdDev'),
   ndvi_min: ndviStats.get('NDVI_min'),
@@ -372,26 +404,38 @@ Export.table.toDrive({
 
 print('=== Exports ready ===');
 print('Go to the Tasks tab (top-right) and click RUN on each export task.');
-print('Files will be saved to your Google Drive in the GreenHeat folder.');
+print('Files will be saved to your Google Drive → GreenHeat folder.');
 
 // ============================================================
-// NOTES
+// POST-EXPORT INSTRUCTIONS
 // ============================================================
-// 
-// After exporting:
-// 1. Download files from Google Drive > GreenHeat folder
-// 2. Rename them:
-//    - greenheat_ndvi.geojson     → data/ndvi.geojson
-//    - greenheat_lst.geojson      → data/lst.geojson  
-//    - greenheat_hotspots.geojson → data/hotspots.geojson
-//    - greenheat_priority.geojson → (merge into hotspots or keep separate)
-//    - greenheat_statistics.geojson → extract properties → data/statistics.json
-//    - greenheat_scatter.csv      → data/scatter_data.csv (or convert to JSON)
 //
-// 3. For statistics.json, extract the properties from the GeoJSON:
-//    The exported GeoJSON has features[0].properties — copy those
-//    properties into a clean JSON file.
+// After all export tasks complete:
 //
-// 4. Place all files in the data/ folder of the web application
-// 5. Open the web application to see the data on the map
+// 1. Open Google Drive → GreenHeat folder
+//
+// 2. Download and rename the files:
+//    greenheat_ndvi.geojson          → data/ndvi.geojson
+//    greenheat_lst.geojson           → data/lst.geojson
+//    greenheat_hotspots.geojson      → data/hotspots.geojson
+//    greenheat_priority_areas.geojson→ data/priority_areas.geojson
+//
+// 3. For statistics.json:
+//    Open greenheat_statistics.geojson in a text editor.
+//    Copy the content of features[0].properties into a new
+//    file called data/statistics.json. Example:
+//
+//    {
+//      "data_available": true,
+//      "study_area_name": "Kattankulathur, Tamil Nadu, India",
+//      "ndvi_mean": 0.35,
+//      "lst_mean": 33.2,
+//      ... etc
+//    }
+//
+// 4. Place all files in the data/ folder of the web application.
+//
+// 5. Open the web page (or refresh) to see the real data on the
+//    map and in the charts.
 // ============================================================
+

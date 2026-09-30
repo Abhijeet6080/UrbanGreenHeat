@@ -23,6 +23,22 @@ Use satellite remote sensing data to:
 4. Analyze the relationship between vegetation and surface temperature
 5. Identify priority areas for urban greening interventions
 
+## 📍 Study Area
+
+**Kattankulathur, Chengalpattu district, Tamil Nadu, India**
+
+The analysis covers the Kattankulathur urban/semi-urban area including the SRMIST campus and surrounding regions.
+
+| Parameter | Value |
+|-----------|-------|
+| Latitude range | 12.80°N – 12.86°N |
+| Longitude range | 80.00°E – 80.08°E |
+| Approximate area | ~6 km × ~7 km |
+| Dataset | Landsat 8/9 Collection 2 Level-2 |
+| Period | 2025 (configurable) |
+
+> **Note:** The analysis extent is not an official administrative boundary. It is the rectangular bounding box chosen for the GreenHeat project analysis.
+
 ## ✨ Features
 
 - **Interactive Map** — Leaflet-based map with multiple data layers
@@ -83,8 +99,9 @@ Priority Greening Areas (high LST + low NDVI)
 
 ### Hotspot Detection
 - **Method:** Percentile-based classification
-- **Default threshold:** 85th percentile of LST distribution
-- **Rationale:** Identifies the warmest ~15% of the study area as hotspots
+- **Default threshold:** 90th percentile of LST distribution within the study area
+- **Rationale:** Identifies the warmest ~10% of the study area as hotspots
+- **Note:** This is a relative (study-area-specific) threshold, not a universal scientific cutoff. The percentile is configurable in the GEE script.
 
 ## 📁 Project Structure
 
@@ -99,6 +116,7 @@ urban-green-heat/
 │   ├── ndvi.geojson        # NDVI sample points
 │   ├── lst.geojson         # LST sample points
 │   ├── hotspots.geojson    # Heat hotspot locations
+│   ├── priority_areas.geojson # Priority greening areas
 │   └── statistics.json     # Summary statistics
 │
 ├── gee/                    # Google Earth Engine scripts
